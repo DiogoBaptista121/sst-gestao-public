@@ -20,7 +20,7 @@ export default function DefinicoesPage() {
       <PageHeader title="Definições" description="Configurações do sistema e da sua conta" />
 
       <Tabs defaultValue={defaultTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6 lg:w-auto lg:inline-flex">
+        <TabsList className={`grid w-full grid-cols-2 ${isAdmin ? 'sm:grid-cols-6' : 'sm:grid-cols-3'} lg:w-auto lg:inline-flex`}>
           {/* Geral — admin and manager */}
           {isAdmin && (
             <TabsTrigger value="geral" className="gap-2">

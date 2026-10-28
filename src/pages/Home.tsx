@@ -1,57 +1,60 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import {
-  LineChart,
-  Line,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import {
-  Calendar,
-  CreditCard,
+  CheckCircle2,
+  CalendarCheck,
+  UserX,
   Clock,
-  MapPin,
-  ArrowRight,
-  UserPlus,
-  Stethoscope,
-  Briefcase,
-  CalendarDays,
-  TrendingUp,
-  AlertTriangle,
 } from 'lucide-react';
+import { isToday, isAfter, isSameMonth, isSameYear, parseISO, startOfToday } from 'date-fns';
 import type { ConsultaStatus } from '@/types/database';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface AgendaItem {
+interface ConsultaMTRow {
   id: string;
-  hora: string;
-  paciente_nif: string;
-  nome_completo: string | null;
-  servico_nome: string | null;
-  servico_cor: string | null;
-  local: string | null;
+  data: string;
+  hora: string | null;
   status: ConsultaStatus;
+  funcionarios_mt: { nome: string | null; numero_funcionario: string | number | null } | null;
 }
 
 interface ChartPoint {
-  dia: string;
-  consultas: number;
-  cartoes: number;
+  semana: string;
+  concluidas: number;
+  faltas: number;
 }
 
-const KPI_CONFIG = [
-  { key: 'consultasHoje', label: 'Consultas Hoje', description: 'Marcadas para hoje', icon: Calendar, iconBg: 'bg-blue-50 dark:bg-blue-950/30', iconColor: 'text-blue-500', accent: 'from-blue-500/10 to-transparent' },
-  { key: 'totalCartoes', label: 'Cartões de Saúde', description: 'Total registados', icon: CreditCard, iconBg: 'bg-emerald-50 dark:bg-emerald-950/30', iconColor: 'text-emerald-500', accent: 'from-emerald-500/10 to-transparent' },
-  { key: 'localHoje', label: 'Unidade Móvel', description: 'Consultas hoje', icon: MapPin, iconBg: 'bg-violet-50 dark:bg-violet-950/30', iconColor: 'text-violet-500', accent: 'from-violet-500/10 to-transparent' },
-  { key: 'pendentes', label: 'Pendentes', description: 'Agendadas / confirmadas', icon: Clock, iconBg: 'bg-amber-50 dark:bg-amber-950/30', iconColor: 'text-amber-500', accent: 'from-amber-500/10 to-transparent' },
+const MESES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
+
+const KPI_CONFIG = [
+  { key: 'realizadosAno', label: 'Exames Anuais (Concluídos)', icon: CheckCircle2, iconColor: 'text-[#4CAF50]' },
+  { key: 'concluidosMes', label: 'Concluídos (Mês)', icon: CalendarCheck, iconColor: 'text-[#0D3B3F] dark:text-[#5CB85C]' },
+  { key: 'faltasMes', label: 'Faltas (Mês)', icon: UserX, iconColor: 'text-red-500' },
+  { key: 'proximosAgendamentos', label: 'Próximos Agendamentos', icon: Clock, iconColor: 'text-[#1E4D2B] dark:text-[#8BC34A]' },
+] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const Skeleton = ({ className = '' }: { className?: string }) => (
@@ -66,14 +69,13 @@ const getGreeting = () => {
   return 'Boa noite';
 };
 
-const getLast7DaysLabels = () => {
-  const labels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-  const today = new Date();
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() - (6 - i));
-    return labels[d.getDay()];
-  });
+// Converte 'YYYY-MM-DD' (ou ISO com hora) para Date à meia-noite LOCAL.
+// (new Date('YYYY-MM-DD') interpreta em UTC e pode cair no dia anterior.)
+const toLocalDate = (value: string | null | undefined): Date | null => {
+  const s = (value ?? '').substring(0, 10);
+  if (!s) return null;
+  const d = parseISO(s);
+  return isNaN(d.getTime()) ? null : d;
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -94,194 +96,181 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const navigate = useNavigate();
-  const { profile, canEdit, role } = useAuth();
+  const { profile } = useAuth();
+  const now = new Date();
+
+  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
+
   const [loading, setLoading] = useState(true);
-  const [kpis, setKpis] = useState({ consultasHoje: 0, totalCartoes: 0, localHoje: 0, pendentes: 0, pendentesValidacao: 0, errosDados: 0, expirados: 0 });
-  const [agendaHoje, setAgendaHoje] = useState<AgendaItem[]>([]);
-  const [chartData, setChartData] = useState<ChartPoint[]>([]);
+  const [consultas, setConsultas] = useState<ConsultaMTRow[]>([]);
 
-  useEffect(() => { fetchData(); }, []);
+  const SELECT_FIELDS = 'id, data, hora, status, funcionarios_mt(nome, numero_funcionario)';
 
-  const fetchData = async () => {
-    setLoading(true);
-    const today = new Date().toISOString().split('T')[0];
-    const labels = getLast7DaysLabels();
-    const dateRange = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d.toISOString().split('T')[0];
+  useEffect(() => {
+    let cancelled = false;
+    const fetchConsultas = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('consultas_mt' as any)
+        .select(SELECT_FIELDS)
+        .order('hora', { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.error('Erro ao carregar consultas_mt:', error);
+        setConsultas([]);
+      } else {
+        setConsultas((data ?? []) as unknown as ConsultaMTRow[]);
+      }
+      setLoading(false);
+    };
+    fetchConsultas();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Agenda de hoje: estritamente consultas MT cuja data corresponde a hoje (date-fns isToday)
+  const agendaHoje = useMemo(
+    () =>
+      consultas.filter((c) => {
+        const d = toLocalDate(c.data);
+        return !!d && isToday(d);
+      }),
+    [consultas]
+  );
+
+  // ─── Métricas derivadas (date-fns isSameMonth / isSameYear / isAfter) ──────
+  const { realizadosAno, concluidosMes, faltasMes, proximosAgendamentos } = useMemo(() => {
+    const refMes = new Date(selectedYear, selectedMonth, 1);
+    const hoje = startOfToday();
+    let realizadosAno = 0, concluidosMes = 0, faltasMes = 0, proximosAgendamentos = 0;
+    for (const c of consultas) {
+      const d = toLocalDate(c.data);
+      if (!d) continue;
+
+      if (c.status === 'agendada' && (isToday(d) || isAfter(d, hoje))) {
+        proximosAgendamentos++;
+      }
+
+      if (!isSameYear(d, refMes)) continue;
+      const noMes = isSameMonth(d, refMes);
+      if (c.status === 'concluida') {
+        realizadosAno++;
+        if (noMes) concluidosMes++;
+      } else if (noMes && c.status === 'falta') {
+        faltasMes++;
+      }
+    }
+    return { realizadosAno, concluidosMes, faltasMes, proximosAgendamentos };
+  }, [consultas, selectedMonth, selectedYear]);
+
+  const kpis = { realizadosAno, concluidosMes, faltasMes, proximosAgendamentos };
+
+  // ─── Gráfico: volume semanal (4 semanas) de consultas MT no mês selecionado ─
+  const chartData: ChartPoint[] = useMemo(() => {
+    const pontos: ChartPoint[] = Array.from({ length: 4 }, (_, i) => ({
+      semana: `Semana ${i + 1}`,
+      concluidas: 0,
+      faltas: 0,
+    }));
+    const refMes = new Date(selectedYear, selectedMonth, 1);
+
+    const consultasDoMes = consultas.filter((c) => {
+      const d = toLocalDate(c.data);
+      return !!d && isSameMonth(d, refMes) && isSameYear(d, refMes);
     });
 
-    try {
-      // @ts-ignore
-      const q1 = supabase.from('cartao_saude').select('id', { count: 'exact', head: true });
-      // @ts-ignore
-      const q2 = supabase.from('cartao_saude').select('id', { count: 'exact', head: true }).eq('estado_entrega', 'PENDENTE');
-      // @ts-ignore
-      const q3 = supabase.from('consultas').select('id', { count: 'exact', head: true }).eq('data', today).in('status', ['confirmada', 'remarcada']);
-      // @ts-ignore
-      const q4 = supabase.from('consultas').select('id', { count: 'exact', head: true }).eq('data', today).eq('local', 'Unidade Móvel');
-      // @ts-ignore
-      const q5 = supabase.from('cartao_saude').select('id', { count: 'exact', head: true }).eq('estado_entrega', 'AGUARDAR_VALIDACAO');
-      // @ts-ignore
-      const qErr = supabase.from('cartao_saude').select('id', { count: 'exact', head: true }).eq('estado_entrega', 'ERRO_DADOS');
-      // @ts-ignore
-      const qExp = supabase.from('cartao_saude').select('id', { count: 'exact', head: true }).eq('estado_entrega', 'EXPIRADO');
-      // @ts-ignore
-      const q6 = supabase.from('consultas').select('id, hora, paciente_nif, status, local, servicos(nome, cor)').eq('data', today).order('hora', { ascending: true }).limit(10);
-      // @ts-ignore
-      const q7 = supabase.from('consultas').select('data').gte('data', dateRange[0]).lte('data', dateRange[6]);
-      // @ts-ignore
-      const q8 = supabase.from('cartao_saude').select('created_at').gte('created_at', dateRange[0]).lte('created_at', dateRange[6] + 'T23:59:59');
-
-      const [totalRes, pendentesRes, hojeRes, movelRes, validacaoRes, errRes, expRes, agendaRes, consultasWeekRes, cartoesWeekRes] = await Promise.all([q1, q2, q3, q4, q5, qErr, qExp, q6, q7, q8]);
-
-      setKpis({
-        consultasHoje: hojeRes.count ?? 0,
-        totalCartoes: totalRes.count ?? 0,
-        localHoje: movelRes.count ?? 0,
-        pendentes: pendentesRes.count ?? 0,
-        pendentesValidacao: validacaoRes.count ?? 0,
-        errosDados: errRes.count ?? 0,
-        expirados: expRes.count ?? 0,
-      });
-
-      const consultasByDay: Record<string, number> = {};
-      const cartoesByDay: Record<string, number> = {};
-      dateRange.forEach(d => { consultasByDay[d] = 0; cartoesByDay[d] = 0; });
-
-      (consultasWeekRes.data ?? []).forEach((r: any) => {
-        const d = (r.data ?? '').substring(0, 10);
-        if (d in consultasByDay) consultasByDay[d]++;
-      });
-      (cartoesWeekRes.data ?? []).forEach((r: any) => {
-        const d = (r.created_at ?? '').substring(0, 10);
-        if (d in cartoesByDay) cartoesByDay[d]++;
-      });
-
-      setChartData(dateRange.map((d, i) => ({ dia: labels[i], consultas: consultasByDay[d], cartoes: cartoesByDay[d] })));
-
-      const rawAgenda = (agendaRes.data ?? []);
-      if (rawAgenda.length > 0) {
-        const nifs = [...new Set(rawAgenda.map((r: any) => r.paciente_nif).filter(Boolean))];
-        const { data: cartoes } = await supabase.from('cartao_saude').select('nif, nome_completo').in('nif', nifs as any);
-        const map = new Map();
-        (cartoes ?? []).forEach((c: any) => map.set(c.nif, c.nome_completo));
-
-        setAgendaHoje(rawAgenda.map((r: any) => ({
-          id: r.id, hora: (r.hora ?? '').substring(0, 5), paciente_nif: r.paciente_nif,
-          nome_completo: map.get(r.paciente_nif) ?? null, servico_nome: r.servicos?.nome ?? null,
-          servico_cor: r.servicos?.cor ?? null, local: r.local ?? null, status: r.status ?? 'agendada'
-        })));
+    for (const c of consultasDoMes) {
+      const d = toLocalDate(c.data)!;
+      const dia = d.getDate();
+      const weekIdx = dia <= 7 ? 0 : dia <= 14 ? 1 : dia <= 21 ? 2 : 3;
+      if (c.status === 'concluida') {
+        pontos[weekIdx].concluidas++;
+      } else if (c.status === 'falta') {
+        pontos[weekIdx].faltas++;
       }
-    } catch (err) { console.error(err); } finally { setLoading(false); }
-  };
+    }
+    return pontos;
+  }, [consultas, selectedMonth, selectedYear]);
+
+  const anos = useMemo(() => {
+    const atual = new Date().getFullYear();
+    const lista = Array.from({ length: 5 }, (_, i) => atual - 3 + i);
+    return lista.includes(selectedYear) ? lista : [...lista, selectedYear].sort((a, b) => a - b);
+  }, [selectedYear]);
 
   const firstName = profile?.nome?.split(' ')[0] || 'Utilizador';
 
   return (
-    <div className="flex flex-col gap-6 pb-12 w-full h-full flex-1 overflow-y-auto pr-2">
-      {/* ── Greeting header ─────────────────────────────────────────── */}
-      <div className="flex items-start justify-between flex-wrap gap-4 pt-1">
+    <div className="flex flex-col gap-4 w-full h-[calc(100vh-6rem)] flex-1 min-h-0 overflow-hidden">
+      {/* ── Greeting header + filtros ───────────────────────────────── */}
+      <div className="flex items-start justify-between flex-wrap gap-4 pt-1 shrink-0">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             {getGreeting()}, {firstName}!
           </h1>
           <p className="text-sm text-muted-foreground mt-1 capitalize">
-            Resumo do dia &nbsp;·&nbsp; {formatDate()}
+            Medicina do Trabalho &nbsp;·&nbsp; {formatDate()}
           </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
+            <SelectTrigger className="w-40 h-10 shadow-sm">
+              <SelectValue placeholder="Mês" />
+            </SelectTrigger>
+            <SelectContent>
+              {MESES.map((nome, i) => (
+                <SelectItem key={nome} value={String(i)}>{nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
+            <SelectTrigger className="w-28 h-10 shadow-sm">
+              <SelectValue placeholder="Ano" />
+            </SelectTrigger>
+            <SelectContent>
+              {anos.map((ano) => (
+                <SelectItem key={ano} value={String(ano)}>{ano}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* ── Centro de Tarefas (Notificações) ────────────────────────── */}
-      {(role === 'admin' || role === 'gestor') && (
-        <div className="bg-card rounded-2xl border p-5 shadow-sm mt-6">
-          <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
-            <span className="flex items-center justify-center w-6 h-6 rounded-md bg-muted text-muted-foreground">
-              <AlertTriangle className="w-3.5 h-3.5" />
-            </span>
-            Centro de Tarefas
-          </h2>
-          {loading ? (
-            <Skeleton className="h-[68px] w-full" />
-          ) : (kpis.pendentesValidacao === 0 && kpis.errosDados === 0 && kpis.expirados === 0) ? (
-            <div className="flex items-center justify-center py-6">
-              <p className="text-sm text-muted-foreground">Tudo em dia. Nenhuma ação pendente.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {kpis.pendentesValidacao > 0 && (
-                <button onClick={() => navigate('/cartao-saude?filter=validacao')} className="flex items-center gap-3 p-3 rounded-xl border border-blue-100 hover:bg-blue-50/50 bg-blue-50/20 text-left transition-colors dark:border-blue-900/50 dark:bg-blue-900/10 dark:hover:bg-blue-900/30">
-                  <div className="text-xl">🔵</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-blue-600/80 dark:text-blue-400 font-bold uppercase tracking-wider mb-0.5">Aprovação</p>
-                    <p className="text-sm text-blue-900 dark:text-blue-100 font-semibold truncate">{kpis.pendentesValidacao} {kpis.pendentesValidacao === 1 ? 'Cartão Aguarda' : 'Cartões Aguardam'} Validação</p>
-                  </div>
-                </button>
-              )}
-              {kpis.errosDados > 0 && (
-                <button onClick={() => navigate('/cartao-saude?filter=erros')} className="flex items-center gap-3 p-3 rounded-xl border border-orange-100 hover:bg-orange-50/50 bg-orange-50/20 text-left transition-colors dark:border-orange-900/50 dark:bg-orange-900/10 dark:hover:bg-orange-900/30">
-                  <div className="text-xl">🟠</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-orange-600/80 dark:text-orange-400 font-bold uppercase tracking-wider mb-0.5">Incompletos</p>
-                    <p className="text-sm text-orange-900 dark:text-orange-100 font-semibold truncate">{kpis.errosDados} {kpis.errosDados === 1 ? 'Cartão com Erro' : 'Cartões com Erros'} nos Dados</p>
-                  </div>
-                </button>
-              )}
-              {kpis.expirados > 0 && (
-                <button onClick={() => navigate('/cartao-saude?filter=expirados')} className="flex items-center gap-3 p-3 rounded-xl border hover:bg-muted/50 bg-muted/20 text-left transition-colors">
-                  <div className="text-xl">⚫</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Renovação</p>
-                    <p className="text-sm text-foreground font-semibold truncate">{kpis.expirados} {kpis.expirados === 1 ? 'Cartão Expirado' : 'Cartões Expirados'}</p>
-                  </div>
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── KPI Grid ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full shrink-0">
         {KPI_CONFIG.map((cfg) => (
           <div key={cfg.key} className="bg-card p-5 rounded-2xl border shadow-sm">
             <div className="flex justify-between mb-4">
               <p className="text-xs font-medium text-muted-foreground">{cfg.label}</p>
               <cfg.icon className={`w-5 h-5 ${cfg.iconColor}`} />
             </div>
-            {loading ? <Skeleton className="h-8 w-12" /> : <p className="text-3xl font-bold">{kpis[cfg.key as keyof typeof kpis]}</p>}
+            {loading ? <Skeleton className="h-8 w-12" /> : <p className="text-3xl font-bold">{kpis[cfg.key]}</p>}
           </div>
         ))}
       </div>
 
       {/* ── Main split: Agenda + Chart ──────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      <div className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Agenda */}
-        <div className="bg-card rounded-2xl border p-5 min-h-[350px]">
-          <h2 className="text-sm font-semibold mb-4">Agenda de Hoje</h2>
+        <div className="bg-card rounded-2xl border p-5 h-full min-h-0 flex flex-col">
+          <h2 className="text-sm font-semibold mb-4 shrink-0">Agenda de Hoje</h2>
           {loading ? <Skeleton className="h-40 w-full" /> : agendaHoje.length === 0 ? <p className="text-xs text-muted-foreground">Sem marcações.</p> : (
-            <div className="space-y-3">
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
               {agendaHoje.map(item => (
-                <div key={item.id} className="flex items-center gap-3 p-2 hover:bg-muted/50 rounded-xl cursor-pointer" onClick={() => {
-                    const consultasUrl =
-                      role === 'colaborador_casa_saude' ? '/consultas/casa-saude' :
-                      role === 'colaborador_unidade_movel' ? '/consultas/unidade-movel' :
-                      role === 'psicologa' ? '/consultas/psicologia' :
-                      '/consultas';
-                    navigate(consultasUrl);
-                  }}>
-                  <div className="w-1 h-8 rounded-full" style={{ background: item.servico_cor ?? '#ccc' }} />
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 p-2 hover:bg-muted/50 rounded-xl cursor-pointer"
+                  onClick={() => navigate('/medicina-trabalho?tab=consultas')}
+                >
+                  <div className="w-1 h-8 rounded-full bg-primary/60" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
-                      {item.paciente_nif === 'sessao' 
-                        ? 'Sessão de Neurologia' 
-                        : (item.nome_completo ?? item.paciente_nif)}
+                      {item.funcionarios_mt?.nome || 'Funcionário não identificado'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {item.hora} · {item.paciente_nif === 'sessao' 
-                        ? `Sessão · ${item.local}` 
-                        : item.servico_nome}
+                      {(item.hora ?? '').substring(0, 5) || '-'}
+                      {item.funcionarios_mt?.numero_funcionario ? ` · Nº ${item.funcionarios_mt.numero_funcionario}` : ''}
                     </p>
                   </div>
                   <StatusBadge status={item.status} />
@@ -292,19 +281,20 @@ export default function HomePage() {
         </div>
 
         {/* Chart */}
-        <div className="bg-card rounded-2xl border p-5 min-h-[350px] flex flex-col">
-          <h2 className="text-sm font-semibold mb-4">Atividade Semanal</h2>
-          <div className="p-6 h-[350px] w-full block">
+        <div className="bg-card rounded-2xl border p-5 h-full min-h-0 flex flex-col">
+          <h2 className="text-sm font-semibold mb-4 shrink-0">Consultas MT · {MESES[selectedMonth]} {selectedYear}</h2>
+          <div className="flex-1 min-h-0 w-full">
             {loading ? <Skeleton className="h-full w-full" /> : (
-              <ResponsiveContainer width="100%" height={320}>
-                <LineChart data={chartData}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
                   <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.5} />
-                  <XAxis dataKey="dia" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} width={30} />
+                  <XAxis dataKey="semana" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} width={30} allowDecimals={false} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Line type="monotone" dataKey="consultas" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="cartoes" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
-                </LineChart>
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="concluidas" name="Concluídas" fill="#4CAF50" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="faltas" name="Faltas" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             )}
           </div>

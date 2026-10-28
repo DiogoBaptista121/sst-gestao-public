@@ -21,6 +21,7 @@ const roleLabels: Record<AppRole, string> = {
     gestor: 'Gestor',
     colaborador_casa_saude: 'Colaborador Casa de Saúde',
     colaborador_unidade_movel: 'Colaborador Unidade Móvel',
+    colaborador_mt: 'Colaborador Medicina do Trabalho',
     psicologa: 'Psicóloga',
     visualizador: 'Visualizador',
 };
@@ -173,6 +174,7 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
                                 <SelectItem value="visualizador">Visualizador — só leitura</SelectItem>
                                 <SelectItem value="colaborador_casa_saude">Colaborador Casa de Saúde</SelectItem>
                                 <SelectItem value="colaborador_unidade_movel">Colaborador Unidade Móvel</SelectItem>
+                                <SelectItem value="colaborador_mt">Colaborador Medicina do Trabalho</SelectItem>
                                 <SelectItem value="psicologa">Psicóloga</SelectItem>
                                 <SelectItem value="gestor">Gestor — gerir dados, sem admin</SelectItem>
                                 <SelectItem value="admin">Administrador — acesso total</SelectItem>

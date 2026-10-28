@@ -31,7 +31,8 @@ import {
   Edit2,
   Loader2,
   Users,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react';
 import {
   Popover,
@@ -76,13 +77,17 @@ function ExamStatusBadge({ ultimoExame, dataNasc }: { ultimoExame: string | null
 
 
 export function FuncionariosTab() {
-  const { canEdit, role } = useAuth();
-  const isViewer = role === 'visualizador';
+  const { role } = useAuth();
+  const isColaboradorMT = role === 'colaborador_mt';
   const canManageBulk = role === 'admin' || role === 'gestor';
-  const hasEditAccess = canEdit && !isViewer;
+  const canImportExport = role === 'admin' || role === 'gestor';
+  const canCreate = role === 'admin' || role === 'gestor';
+  const hasEditAccess = role === 'admin' || role === 'gestor' || isColaboradorMT;
   const { isSuperAdmin } = useSuperAdmin();
   const [loading, setLoading] = useState(true);
   const [funcionarios, setFuncionarios] = useState<FuncionarioMT[]>([]);
+  // Histórico mínimo de consultas MT por funcionário (para derivar o "Último Exame")
+  const [consultasMT, setConsultasMT] = useState<{ funcionario_id: string; data: string; status: string }[]>([]);
   const [filteredFuncionarios, setFilteredFuncionarios] = useState<FuncionarioMT[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ativoFilter, setAtivoFilter] = useState<string>('todos');
@@ -126,14 +131,26 @@ export function FuncionariosTab() {
 
   useEffect(() => {
     filterFuncionarios();
-  }, [funcionarios, searchTerm, ativoFilter, examFilter, sortBy]);
+  }, [funcionarios, consultasMT, searchTerm, ativoFilter, examFilter, sortBy]);
 
   const fetchFuncionarios = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('funcionarios_mt')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const [funcRes, consultasRes] = await Promise.all([
+      supabase
+        .from('funcionarios_mt')
+        .select('*')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('consultas_mt' as any)
+        .select('funcionario_id, data, status'),
+    ]);
+    const { data, error } = funcRes;
+
+    if (consultasRes.error) {
+      console.error('Error fetching consultas_mt:', consultasRes.error);
+    } else {
+      setConsultasMT((consultasRes.data ?? []) as unknown as { funcionario_id: string; data: string; status: string }[]);
+    }
 
     if (error) {
       console.error('Error fetching funcionarios:', error);
@@ -144,8 +161,25 @@ export function FuncionariosTab() {
     setLoading(false);
   };
 
+  // "Último Exame" resolvido: 1) data da consulta mais recente com status 'concluida'
+  // (agendada/confirmada/cancelada/falta são ignoradas); 2) fallback: valor guardado
+  // no próprio funcionário (preenchido manualmente ou importado).
+  const withDerivedUltimoExame = (list: FuncionarioMT[]): FuncionarioMT[] => {
+    const ultimaConcluida = new Map<string, string>();
+    for (const c of consultasMT) {
+      if (c.status !== 'concluida' || !c.data) continue;
+      const dia = c.data.substring(0, 10);
+      const atual = ultimaConcluida.get(c.funcionario_id);
+      if (!atual || dia > atual) ultimaConcluida.set(c.funcionario_id, dia);
+    }
+    return list.map((f) => {
+      const concluida = ultimaConcluida.get(f.id);
+      return concluida ? { ...f, ultimo_exame: concluida } : f;
+    });
+  };
+
   const filterFuncionarios = () => {
-    let filtered = [...funcionarios];
+    let filtered = withDerivedUltimoExame(funcionarios);
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -217,7 +251,9 @@ export function FuncionariosTab() {
     setModalOpen(true);
   };
 
-  const openEditModal = (funcionario: FuncionarioMT) => {
+  const openEditModal = (derived: FuncionarioMT) => {
+    // Usa o registo original para não gravar o "Último Exame" derivado por engano
+    const funcionario = funcionarios.find((x) => x.id === derived.id) ?? derived;
     setEditingFuncionario(funcionario);
     setFormData({
       numero_funcionario: funcionario.numero_funcionario,
@@ -277,9 +313,10 @@ export function FuncionariosTab() {
 
     if (editingFuncionario) {
       // ── EDIT: target the exact row by its UUID ──────────────────────
+      const updateData = isColaboradorMT ? { telefone: payload.telefone } : payload;
       const res = await supabase
         .from('funcionarios_mt')
-        .update(payload as any)
+        .update(updateData as any)
         .eq('id', editingFuncionario.id);
       error = res.error;
     } else {
@@ -468,33 +505,37 @@ export function FuncionariosTab() {
   };
 
   const columns: Column<FuncionarioMT>[] = [
-    {
-      key: 'select' as any,
-      header: (
-        <input
-          type="checkbox"
-          checked={allSelected}
-          onChange={toggleSelectAll}
-          className="h-4 w-4 rounded border-gray-300"
-          aria-label="Selecionar todos"
-        />
-      ) as any,
-      cell: (item) => (
-        <input
-          type="checkbox"
-          checked={selectedIds.includes(item.id)}
-          onChange={(e) => {
-            e.stopPropagation();
-            setSelectedIds((prev) =>
-              e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
-            );
-          }}
-          onClick={(e) => e.stopPropagation()}
-          className="h-4 w-4 rounded border-gray-300"
-        />
-      ),
-      className: 'w-10',
-    },
+    ...(canManageBulk
+      ? [
+          {
+            key: 'select' as any,
+            header: (
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+                className="h-4 w-4 rounded border-gray-300"
+                aria-label="Selecionar todos"
+              />
+            ) as any,
+            cell: (item: FuncionarioMT) => (
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(item.id)}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  setSelectedIds((prev) =>
+                    e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                  );
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+            ),
+            className: 'w-10',
+          },
+        ]
+      : []),
     {
       key: 'numero_funcionario',
       header: 'Nº',
@@ -554,55 +595,70 @@ export function FuncionariosTab() {
       ),
       className: 'hidden xl:table-cell w-32',
     },
-    {
-      key: 'actions',
-      header: '',
-      cell: (item) => (
-        <div className="flex items-center gap-1 justify-end">
-          {hasEditAccess && (
-            <Button variant="ghost" size="icon" className="h-7 w-7"
-              onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </Button>
-          )}
-          {isSuperAdmin && (
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
-              onClick={(e) => { e.stopPropagation(); openDeleteDialog(item); }}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </Button>
-          )}
-        </div>
-      ),
-      className: 'w-16',
-    },
+    ...(hasEditAccess
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            cell: (item: FuncionarioMT) => (
+              <div className="flex items-center gap-1 justify-end">
+                <Button variant="ghost" size="icon" className="h-7 w-7"
+                  onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </Button>
+                {isSuperAdmin && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={(e) => { e.stopPropagation(); openDeleteDialog(item); }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+            ),
+            className: 'w-16',
+          },
+        ]
+      : []),
   ];
+
+  const hasActiveFilters =
+    searchTerm.trim() !== '' || ativoFilter !== 'todos' || examFilter !== 'todos';
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setAtivoFilter('todos');
+    setExamFilter('todos');
+  };
 
   return (
     <div className="flex flex-col h-full gap-5">
       {/* BLOCO 1: PageHeader */}
       <PageHeader title="Medicina do Trabalho" description="Gestão de funcionários da medicina do trabalho">
-        {hasEditAccess && (
+        {canCreate && (
           <div className="flex items-center gap-3">
-            <label className="cursor-pointer">
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleImport}
-                className="hidden"
-              />
-              <Button variant="outline" className="gap-2 h-10 shadow-sm" asChild>
-                <span>
-                  <FileUp className="w-4 h-4 text-muted-foreground" />
-                  Importar
-                </span>
-              </Button>
-            </label>
-            <Button variant="outline" onClick={handleExport} className="gap-2 h-10 shadow-sm">
-              <FileDown className="w-4 h-4 text-muted-foreground" />
-              Exportar
-            </Button>
+            {canImportExport && (
+              <>
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleImport}
+                    className="hidden"
+                  />
+                  <Button variant="outline" className="gap-2 h-10 shadow-sm" asChild>
+                    <span>
+                      <FileUp className="w-4 h-4 text-muted-foreground" />
+                      Importar
+                    </span>
+                  </Button>
+                </label>
+                <Button variant="outline" onClick={handleExport} className="gap-2 h-10 shadow-sm">
+                  <FileDown className="w-4 h-4 text-muted-foreground" />
+                  Exportar
+                </Button>
+              </>
+            )}
             <Button onClick={openCreateModal} className="gap-2 h-10 shadow-sm">
               <Plus className="w-4 h-4" />
               Novo Funcionário
@@ -655,6 +711,16 @@ export function FuncionariosTab() {
             <SelectItem value="nome_desc">Nome (Z-A)</SelectItem>
           </SelectContent>
         </Select>
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            onClick={clearFilters}
+            className="h-10 px-2 lg:px-3 text-muted-foreground hover:text-foreground"
+          >
+            <X className="mr-2 h-4 w-4" />
+            Limpar
+          </Button>
+        )}
         {isSuperAdmin && selectedIds.length > 0 && (
           <Button
             variant="destructive"
@@ -721,6 +787,7 @@ export function FuncionariosTab() {
                     setFormData({ ...formData, numero_funcionario: e.target.value })
                   }
                   placeholder="Ex: 12345"
+                  disabled={isColaboradorMT}
                   className={`h-10 ${formErrors.numero_funcionario ? 'border-destructive' : ''}`}
                 />
                 {formErrors.numero_funcionario && (
@@ -734,8 +801,9 @@ export function FuncionariosTab() {
                   onValueChange={(value) =>
                     setFormData({ ...formData, estado: value })
                   }
+                  disabled={isColaboradorMT}
                 >
-                  <SelectTrigger className="h-10">
+                  <SelectTrigger className="h-10" disabled={isColaboradorMT}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -753,6 +821,7 @@ export function FuncionariosTab() {
                 value={formData.nome}
                 onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                 placeholder="Nome do funcionário"
+                disabled={isColaboradorMT}
                 className={`h-10 ${formErrors.nome ? 'border-destructive' : ''}`}
               />
               {formErrors.nome && (
@@ -788,6 +857,7 @@ export function FuncionariosTab() {
                   <PopoverTrigger asChild>
                     <Button
                       variant={"outline"}
+                      disabled={isColaboradorMT}
                       className={cn(
                         "w-full justify-start text-left font-normal h-10 px-3",
                         !formData.data_nascimento && "text-muted-foreground"
@@ -817,6 +887,7 @@ export function FuncionariosTab() {
                   value={formData.categoria}
                   onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
                   placeholder="Ex: Técnico Superior"
+                  disabled={isColaboradorMT}
                   className="h-10"
                 />
               </div>
@@ -826,6 +897,7 @@ export function FuncionariosTab() {
                   value={formData.servico}
                   onChange={(e) => setFormData({ ...formData, servico: e.target.value })}
                   placeholder="Ex: Serviços Médicos"
+                  disabled={isColaboradorMT}
                   className="h-10"
                 />
               </div>
@@ -839,6 +911,7 @@ export function FuncionariosTab() {
                   <PopoverTrigger asChild>
                     <Button
                       variant={"outline"}
+                      disabled={isColaboradorMT}
                       className={cn(
                         "w-full justify-start text-left font-normal h-10 px-3",
                         !formData.data_admissao && "text-muted-foreground"
@@ -864,6 +937,7 @@ export function FuncionariosTab() {
                   <PopoverTrigger asChild>
                     <Button
                       variant={"outline"}
+                      disabled={isColaboradorMT}
                       className={cn(
                         "w-full justify-start text-left font-normal h-10 px-3",
                         !formData.ultimo_exame && "text-muted-foreground"

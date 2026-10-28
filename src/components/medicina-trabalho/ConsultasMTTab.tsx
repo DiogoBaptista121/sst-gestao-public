@@ -37,9 +37,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Calendar as CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import {
+  Calendar as CalendarIcon,
   Plus,
   Search,
   FileDown,
@@ -49,10 +49,14 @@ import {
   Stethoscope,
   Check,
   ChevronsUpDown,
-  Trash2
+  Trash2,
+  User,
+  UserPen,
+  X
 } from 'lucide-react';
+import { FuncionarioEditModal } from './FuncionarioEditModal';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import type { ConsultaStatus } from '@/types/database';
@@ -82,13 +86,39 @@ interface ConsultaMTRow {
   } | null;
 }
 
+// Blocos de 20 minutos entre as 09:00 e as 17:00 (último início às 16:40)
+const generateTimeSlots = (start = '09:00', end = '17:00', stepMinutes = 20): string[] => {
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const slots: string[] = [];
+  for (let m = toMinutes(start); m < toMinutes(end); m += stepMinutes) {
+    slots.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+  }
+  return slots;
+};
+
+// Converte 'YYYY-MM-DD' (ou ISO com hora) para Date à meia-noite local, sem desvios de fuso
+const parseDataLocal = (value: string): Date => parseISO(value.substring(0, 10));
+
+const TIME_SLOTS = generateTimeSlots();
+
+const TIPOS_EXAME = [
+  { value: 'admissão', label: 'Admissão' },
+  { value: 'periódico', label: 'Periódica' },
+  { value: 'ocasional', label: 'Ocasional' },
+];
+
 export function ConsultasMTTab() {
   const { canEdit, role, user } = useAuth();
 
-  // ✅ Roles atualizadas: só admin gere medicina do trabalho
+  // ✅ Roles atualizadas: só admin cria/edita/apaga; colaborador_mt altera apenas o status
   const isViewer = role === 'visualizador';
   const canManageBulk = role === 'admin';
+  const canImportExport = role === 'admin';
   const hasEditAccess = role === 'admin';
+  const canChangeStatus = role === 'admin' || role === 'colaborador_mt';
 
   const { isSuperAdmin } = useSuperAdmin();
   const [loading, setLoading] = useState(true);
@@ -97,7 +127,8 @@ export function ConsultasMTTab() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
-  const [dataFilter, setDataFilter] = useState<string>('');
+  // Por defeito mostra as consultas do dia atual (data local, formato YYYY-MM-DD)
+  const [dataFilter, setDataFilter] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingConsulta, setEditingConsulta] = useState<ConsultaMTRow | null>(null);
@@ -112,6 +143,7 @@ export function ConsultasMTTab() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [funcionarioOpen, setFuncionarioOpen] = useState(false);
+  const [fichaFuncionarioId, setFichaFuncionarioId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     funcionario_id: '',
@@ -164,18 +196,19 @@ export function ConsultasMTTab() {
   const filteredConsultas = consultas.filter((c) => {
     const func = c.funcionarios_mt;
 
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      if (
-        !func?.nome?.toLowerCase().includes(term) &&
-        !func?.numero_funcionario?.toLowerCase().includes(term)
-      ) {
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim();
+      const nome = (func?.nome || '').toString().toLowerCase();
+      const numero = (func?.numero_funcionario ?? '').toString().toLowerCase();
+
+      if (!nome.includes(term) && !numero.includes(term)) {
         return false;
       }
     }
 
     if (statusFilter !== 'todos' && c.status !== statusFilter) return false;
-    if (dataFilter && c.data !== dataFilter) return false;
+    // Compara apenas dia/mês/ano, ignorando qualquer componente de hora
+    if (dataFilter && (c.data ?? '').substring(0, 10) !== dataFilter) return false;
 
     return true;
   });
@@ -211,6 +244,37 @@ export function ConsultasMTTab() {
     setModalOpen(true);
   };
 
+  // "Último Exame" = data da consulta mais recente com status 'concluida'.
+  // Consultas agendadas, confirmadas, canceladas ou com falta são ignoradas;
+  // se a mais recente não estiver concluída, usa-se a concluída anterior.
+  // Se não existir nenhuma concluída, o valor atual (ex.: importado) é mantido.
+  const recalcUltimoExame = async (funcionarioId: string | null | undefined) => {
+    if (!funcionarioId) return;
+    const { data, error } = await supabase
+      .from('consultas_mt' as any)
+      .select('data')
+      .eq('funcionario_id', funcionarioId)
+      .eq('status', 'concluida')
+      .order('data', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn('Erro ao calcular ultimo_exame:', error.message);
+      return;
+    }
+
+    const ultima = (data as any[] | null)?.[0]?.data as string | undefined;
+    if (!ultima) return;
+
+    const { error: syncErr } = await supabase
+      .from('funcionarios_mt')
+      .update({ ultimo_exame: ultima.substring(0, 10) })
+      .eq('id', funcionarioId);
+    if (syncErr) {
+      console.warn('Erro ao sincronizar ultimo_exame:', syncErr.message);
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.funcionario_id) {
       toast.error('Selecione um funcionário');
@@ -239,14 +303,10 @@ export function ConsultasMTTab() {
     };
 
     const syncUltimoExame = async () => {
-      const numFuncionario = Number(formData.numero_funcionario);
-      if (!numFuncionario || !formData.data) return;
-      const { error: syncErr } = await supabase
-        .from('funcionarios_mt')
-        .update({ ultimo_exame: formData.data })
-        .eq('numero_funcionario', numFuncionario as any);
-      if (syncErr) {
-        console.warn('Erro ao sincronizar ultimo_exame:', syncErr.message);
+      await recalcUltimoExame(formData.funcionario_id);
+      // Se a consulta mudou de funcionário, recalcula também o anterior
+      if (editingConsulta && editingConsulta.funcionario_id !== formData.funcionario_id) {
+        await recalcUltimoExame(editingConsulta.funcionario_id);
       }
     };
 
@@ -300,6 +360,7 @@ export function ConsultasMTTab() {
       toast.error('Erro ao eliminar consulta MT');
     } else {
       toast.success('Consulta MT eliminada com sucesso');
+      await recalcUltimoExame(deletingConsulta.funcionario_id);
       setDeleteDialogOpen(false);
       setDeletingConsulta(null);
       fetchData();
@@ -318,6 +379,10 @@ export function ConsultasMTTab() {
     if (error) {
       toast.error('Erro ao eliminar consultas: ' + error.message);
     } else {
+      const afetados = [...new Set(
+        consultas.filter((c) => selectedIds.includes(c.id)).map((c) => c.funcionario_id)
+      )];
+      await Promise.all(afetados.map((fid) => recalcUltimoExame(fid)));
       toast.success(`${selectedIds.length} consulta(s) eliminada(s) com sucesso`);
       setSelectedIds([]);
       setBulkDeleteDialogOpen(false);
@@ -336,6 +401,7 @@ export function ConsultasMTTab() {
       toast.error('Erro ao atualizar status');
     } else {
       toast.success('Status atualizado');
+      await recalcUltimoExame(consulta.funcionario_id);
       fetchData();
     }
   };
@@ -435,7 +501,30 @@ export function ConsultasMTTab() {
 
   const baseColumns: Column<ConsultaMTRow>[] = [
     { key: 'numero_funcionario', header: 'Nº Funcionário', cell: (item) => item.funcionarios_mt?.numero_funcionario || '-' },
-    { key: 'nome', header: 'Nome Completo', cell: (item) => item.funcionarios_mt?.nome || '-' },
+    {
+      key: 'nome',
+      header: 'Nome Completo',
+      cell: (item) => (
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-sm">{item.funcionarios_mt?.nome || '-'}</span>
+          {item.funcionario_id && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title="Abrir ficha do funcionário"
+              className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFichaFuncionarioId(item.funcionario_id);
+              }}
+            >
+              <User className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+      ),
+    },
     { key: 'data', header: 'Data', cell: (item) => formatData(item.data) },
     { key: 'hora', header: 'Hora', cell: (item) => (item.hora ?? '').substring(0, 5) || '-' },
     { key: 'tipo_exame', header: 'Tipo de Exame', cell: (item) => item.tipo_exame || 'Periódico' },
@@ -444,7 +533,7 @@ export function ConsultasMTTab() {
       header: 'Status',
       cell: (item) => (
         <div className="flex items-center gap-2">
-          {hasEditAccess ? (
+          {canChangeStatus ? (
             <Select value={item.status} onValueChange={(value) => handleQuickStatusChange(item, value as ConsultaStatus)}>
               <SelectTrigger className="w-32 h-8">
                 <StatusBadge status={item.status as ConsultaStatus} />
@@ -478,29 +567,29 @@ export function ConsultasMTTab() {
         return item.resultado ? (labels[item.resultado] || item.resultado) : '-';
       },
     },
-    {
-      key: 'actions',
-      header: '',
-      cell: (item) => (
-        <div className="flex items-center gap-1 justify-end">
-          {hasEditAccess && (
-            <>
-              <Button variant="ghost" size="icon" className="h-7 w-7"
-                onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>
-                <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
-              </Button>
-              {isSuperAdmin && (
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={(e) => { e.stopPropagation(); openDeleteDialog(item); }}>
-                  <Trash2 className="w-3.5 h-3.5" />
+    ...(hasEditAccess
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            cell: (item: ConsultaMTRow) => (
+              <div className="flex items-center gap-1 justify-end">
+                <Button variant="ghost" size="icon" className="h-7 w-7"
+                  onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>
+                  <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
                 </Button>
-              )}
-            </>
-          )}
-        </div>
-      ),
-      className: 'w-16',
-    },
+                {isSuperAdmin && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={(e) => { e.stopPropagation(); openDeleteDialog(item); }}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+            ),
+            className: 'w-16',
+          },
+        ]
+      : []),
   ];
 
   const checkboxColumn: Column<ConsultaMTRow> = {
@@ -519,6 +608,15 @@ export function ConsultasMTTab() {
 
   const columns = !canManageBulk ? baseColumns : [checkboxColumn, ...baseColumns];
 
+  const hasActiveFilters =
+    searchTerm.trim() !== '' || statusFilter !== 'todos' || dataFilter !== '';
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('todos');
+    setDataFilter('');
+  };
+
   return (
     <div className="flex flex-col h-full gap-5">
       {/* BLOCO 1: PageHeader */}
@@ -529,15 +627,19 @@ export function ConsultasMTTab() {
         </div>
         {hasEditAccess && (
           <div className="flex items-center gap-3 shrink-0">
-            <label className="cursor-pointer">
-              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImport} className="hidden" />
-              <Button variant="outline" className="gap-2 h-10 shadow-sm" asChild>
-                <span><FileUp className="w-4 h-4 text-muted-foreground" />Importar</span>
-              </Button>
-            </label>
-            <Button variant="outline" onClick={handleExport} className="gap-2 h-10 shadow-sm">
-              <FileDown className="w-4 h-4 text-muted-foreground" />Exportar
-            </Button>
+            {canImportExport && (
+              <>
+                <label className="cursor-pointer">
+                  <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImport} className="hidden" />
+                  <Button variant="outline" className="gap-2 h-10 shadow-sm" asChild>
+                    <span><FileUp className="w-4 h-4 text-muted-foreground" />Importar</span>
+                  </Button>
+                </label>
+                <Button variant="outline" onClick={handleExport} className="gap-2 h-10 shadow-sm">
+                  <FileDown className="w-4 h-4 text-muted-foreground" />Exportar
+                </Button>
+              </>
+            )}
             <Button onClick={openCreateModal} className="gap-2 h-10 shadow-sm">
               <Plus className="w-4 h-4" />Nova Consulta MT
             </Button>
@@ -552,7 +654,37 @@ export function ConsultasMTTab() {
           <Input placeholder="Pesquisar funcionário..." value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 h-10 shadow-sm" />
         </div>
-        <Input type="date" value={dataFilter} onChange={(e) => setDataFilter(e.target.value)} className="w-full sm:w-40 h-10 shadow-sm" />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(
+                "w-full sm:w-auto sm:min-w-[11rem] justify-start text-left font-normal h-10 px-3 shadow-sm",
+                !dataFilter && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {dataFilter ? format(parseDataLocal(dataFilter), "PPP", { locale: pt }) : <span>Filtrar por data...</span>}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              locale={pt}
+              selected={dataFilter ? parseDataLocal(dataFilter) : undefined}
+              onSelect={(date) => setDataFilter(date ? format(date, "yyyy-MM-dd") : "")}
+              initialFocus
+            />
+            {dataFilter && (
+              <div className="border-t p-2">
+                <Button variant="ghost" size="sm" className="w-full" onClick={() => setDataFilter("")}>
+                  Limpar data
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-full sm:w-40 h-10 shadow-sm"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
@@ -564,6 +696,16 @@ export function ConsultasMTTab() {
             <SelectItem value="falta">Falta</SelectItem>
           </SelectContent>
         </Select>
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            onClick={clearFilters}
+            className="h-10 px-2 lg:px-3 text-muted-foreground hover:text-foreground"
+          >
+            <X className="mr-2 h-4 w-4" />
+            Limpar
+          </Button>
+        )}
         {isSuperAdmin && selectedIds.length > 0 && (
           <Button variant="destructive" className="gap-2 h-10 shadow-sm shrink-0 sm:ml-auto w-full sm:w-auto"
             onClick={() => setBulkDeleteDialogOpen(true)}>
@@ -592,8 +734,25 @@ export function ConsultasMTTab() {
         )}
       </div>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog
+        open={modalOpen}
+        onOpenChange={(open) => {
+          if (!open && fichaFuncionarioId) return;
+          setModalOpen(open);
+        }}
+      >
+        <DialogContent
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          onPointerDownOutside={(e) => {
+            if (fichaFuncionarioId) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (fichaFuncionarioId) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (fichaFuncionarioId) e.preventDefault();
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Stethoscope className="w-5 h-5 text-primary" />
@@ -604,82 +763,99 @@ export function ConsultasMTTab() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-6 py-6">
-            <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 py-4">
+            <div className="col-span-2 space-y-2">
               <Label className="text-sm">Funcionário *</Label>
-              <Popover open={funcionarioOpen} onOpenChange={setFuncionarioOpen}>
+              <div className="flex items-center gap-2">
+                <Popover open={funcionarioOpen} onOpenChange={setFuncionarioOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" aria-expanded={funcionarioOpen} className="flex-1 justify-between font-normal h-10">
+                      {selectedFuncionario ? `${selectedFuncionario.nome} (${selectedFuncionario.numero_funcionario})` : 'Selecione um funcionário...'}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[480px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Pesquisar funcionário..." className="h-10" />
+                      <CommandList>
+                        <CommandEmpty>Nenhum funcionário encontrado.</CommandEmpty>
+                        <CommandGroup>
+                          {funcionarios.map((func) => (
+                            <CommandItem key={func.id} value={`${func.nome} ${func.numero_funcionario}`}
+                              onSelect={() => { setFormData({ ...formData, funcionario_id: func.id, numero_funcionario: func.numero_funcionario }); setFuncionarioOpen(false); }}>
+                              <Check className={cn('mr-2 h-4 w-4', formData.funcionario_id === func.id ? 'opacity-100' : 'opacity-0')} />
+                              {func.nome} ({func.numero_funcionario})
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {formData.funcionario_id && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    title="Abrir ficha do funcionário"
+                    className="h-10 w-10 shrink-0 text-muted-foreground hover:text-primary"
+                    onClick={() => setFichaFuncionarioId(formData.funcionario_id)}
+                  >
+                    <UserPen className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="col-span-2 space-y-2">
+              <Label className="text-sm">Tipo de Exame</Label>
+              <div className="flex flex-wrap gap-2">
+                {TIPOS_EXAME.map((tipo) => (
+                  <Button
+                    key={tipo.value}
+                    type="button"
+                    size="sm"
+                    variant={formData.tipo_exame === tipo.value ? 'default' : 'outline'}
+                    onClick={() => setFormData({ ...formData, tipo_exame: tipo.value })}
+                    className="h-9"
+                  >
+                    {tipo.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">Data *</Label>
+              <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" role="combobox" aria-expanded={funcionarioOpen} className="w-full justify-between font-normal h-10">
-                    {selectedFuncionario ? `${selectedFuncionario.nome} (${selectedFuncionario.numero_funcionario})` : 'Selecione um funcionário...'}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10 px-3",
+                      !formData.data && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formData.data ? format(parseDataLocal(formData.data), "PPP", { locale: pt }) : <span>Selecione uma data</span>}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[480px] p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Pesquisar funcionário..." className="h-10" />
-                    <CommandList>
-                      <CommandEmpty>Nenhum funcionário encontrado.</CommandEmpty>
-                      <CommandGroup>
-                        {funcionarios.map((func) => (
-                          <CommandItem key={func.id} value={`${func.nome} ${func.numero_funcionario}`}
-                            onSelect={() => { setFormData({ ...formData, funcionario_id: func.id, numero_funcionario: func.numero_funcionario }); setFuncionarioOpen(false); }}>
-                            <Check className={cn('mr-2 h-4 w-4', formData.funcionario_id === func.id ? 'opacity-100' : 'opacity-0')} />
-                            {func.nome} ({func.numero_funcionario})
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    locale={pt}
+                    selected={formData.data ? parseDataLocal(formData.data) : undefined}
+                    onSelect={(date) =>
+                      setFormData({ ...formData, data: date ? format(date, "yyyy-MM-dd") : "" })
+                    }
+                    initialFocus
+                  />
                 </PopoverContent>
               </Popover>
             </div>
 
-            <div className="space-y-3">
-              <Label className="text-sm">Tipo de Exame</Label>
-              <Select value={formData.tipo_exame} onValueChange={(value) => setFormData({ ...formData, tipo_exame: value })}>
-                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admissão">Admissão</SelectItem>
-                  <SelectItem value="periódico">Periódica</SelectItem>
-                  <SelectItem value="ocasional">Ocasional</SelectItem>
-                  <SelectItem value="retorno">Regresso ao Trabalho</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-sm">Data *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal h-10 px-3",
-                        !formData.data && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.data ? format(new Date(formData.data), "PPP", { locale: pt }) : <span>Selecione uma data</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={formData.data ? new Date(formData.data) : undefined}
-                      onSelect={(date) => setFormData({ ...formData, data: date ? date.toISOString() : '' })}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="space-y-3">
-                <Label className="text-sm">Hora *</Label>
-                <Input type="time" value={formData.hora} onChange={(e) => setFormData({ ...formData, hora: e.target.value })} className="h-10" />
-              </div>
-            </div>
-
-            <div className="space-y-3">
+            <div className="space-y-2">
               <Label className="text-sm">Status</Label>
               <Select value={formData.status} onValueChange={(value: ConsultaStatus) => setFormData({ ...formData, status: value })}>
                 <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
@@ -693,7 +869,25 @@ export function ConsultasMTTab() {
               </Select>
             </div>
 
-            <div className="space-y-3">
+            <div className="col-span-2 space-y-2">
+              <Label className="text-sm">Hora *</Label>
+              <div className="grid grid-cols-6 gap-1.5">
+                {TIME_SLOTS.map((slot) => (
+                  <Button
+                    key={slot}
+                    type="button"
+                    size="sm"
+                    variant={formData.hora === slot ? 'default' : 'outline'}
+                    onClick={() => setFormData({ ...formData, hora: slot })}
+                    className="h-8 px-0 text-xs"
+                  >
+                    {slot}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label className="text-sm">Resultado</Label>
               <Select value={formData.resultado} onValueChange={(value) => setFormData({ ...formData, resultado: value })}>
                 <SelectTrigger className="h-10"><SelectValue placeholder="Selecione o resultado..." /></SelectTrigger>
@@ -706,10 +900,10 @@ export function ConsultasMTTab() {
               </Select>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <Label className="text-sm">Notas</Label>
               <Textarea value={formData.notas} onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
-                placeholder="Observações da consulta..." rows={3} className="resize-none" />
+                placeholder="Observações da consulta..." rows={1} className="resize-none min-h-10" />
             </div>
           </div>
 
@@ -730,6 +924,17 @@ export function ConsultasMTTab() {
         loading={deleting}
         title="Eliminar Consulta MT"
         description="Tem a certeza que deseja eliminar esta consulta de medicina do trabalho? Esta ação não pode ser desfeita."
+      />
+
+      <FuncionarioEditModal
+        open={!!fichaFuncionarioId}
+        onOpenChange={(open) => {
+          if (!open) setFichaFuncionarioId(null);
+        }}
+        funcionarioId={fichaFuncionarioId}
+        onSaved={fetchData}
+        isSubModal={modalOpen}
+        onBack={modalOpen ? () => setFichaFuncionarioId(null) : undefined}
       />
     </div>
   );

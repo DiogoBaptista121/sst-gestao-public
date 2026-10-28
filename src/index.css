@@ -4,142 +4,144 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Casa de Saúde - Design System
-   Paleta: Teal/Azul-esverdeado principal + Magenta accent
-   Inspiração: Healthcare moderno, limpo, profissional
+/* Segurança e Saúde no Trabalho (SST) - Design System
+   Paleta: Verde vibrante (#4CAF50 / #5CB85C) + Azul-petróleo profundo (#0D3B3F / #1E4D2B)
+   Fundo escuro: Slate-900 (#0F172A) e texto claro (#F8FAFC)
 */
 
 @layer base {
   :root {
     /* Backgrounds */
-    --background: 210 20% 98%;
-    --foreground: 215 25% 15%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
 
     /* Cards & Surfaces */
     --card: 0 0% 100%;
-    --card-foreground: 215 25% 15%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 15%;
+    --popover-foreground: 222 47% 11%;
 
-    /* Primary - Teal */
-    --primary: 174 72% 40%;
+    /* Primary - Verde SST (#4CAF50) */
+    --primary: 122 39% 49%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Light Teal */
-    --secondary: 174 40% 95%;
-    --secondary-foreground: 174 72% 30%;
+    /* Secondary - Azul-petróleo suave */
+    --secondary: 185 35% 94%;
+    --secondary-foreground: 185 66% 18%;
 
     /* Muted */
-    --muted: 210 20% 96%;
-    --muted-foreground: 215 15% 50%;
+    --muted: 210 30% 95%;
+    --muted-foreground: 215 16% 46%;
 
-    /* Accent - Magenta/Rosa */
-    --accent: 330 80% 55%;
-    --accent-foreground: 0 0% 100%;
+    /* Accent - Azul-esverdeado profundo (#0D3B3F) */
+    --accent: 185 66% 15%;
+    --accent-foreground: 210 40% 98%;
 
     /* Destructive */
     --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Success */
-    --success: 145 65% 42%;
+    /* Success - #4CAF50 */
+    --success: 122 39% 49%;
     --success-foreground: 0 0% 100%;
 
     /* Warning */
     --warning: 38 95% 55%;
     --warning-foreground: 38 95% 15%;
 
-    /* Info */
-    --info: 200 90% 50%;
+    /* Info - Petróleo médio */
+    --info: 185 60% 32%;
     --info-foreground: 0 0% 100%;
 
     /* Borders & Inputs */
-    --border: 210 20% 90%;
-    --input: 210 20% 90%;
-    --ring: 174 72% 40%;
+    --border: 214 32% 90%;
+    --input: 214 32% 90%;
+    --ring: 122 39% 49%;
 
     --radius: 0.625rem;
 
-    /* Sidebar - Gradient Teal-Blue */
-    --sidebar-background: 180 60% 25%;
-    --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 174 72% 50%;
+    /* Sidebar - Azul-esverdeado profundo (#0D3B3F -> #1E4D2B) */
+    --sidebar-background: 185 66% 15%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 122 39% 49%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 180 50% 30%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 180 40% 35%;
-    --sidebar-ring: 174 72% 50%;
-    --sidebar-muted: 180 30% 85%;
+    --sidebar-accent: 185 55% 20%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 185 45% 22%;
+    --sidebar-ring: 122 39% 49%;
+    --sidebar-muted: 140 30% 85%;
 
     /* Gradients */
-    --gradient-sidebar: linear-gradient(180deg, hsl(180 60% 28%) 0%, hsl(200 65% 25%) 100%);
-    --gradient-primary: linear-gradient(135deg, hsl(174 72% 40%) 0%, hsl(180 60% 35%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(330 80% 55%) 0%, hsl(340 75% 50%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(210 20% 98%) 100%);
+    --gradient-sidebar: linear-gradient(180deg, #0D3B3F 0%, #1E4D2B 100%);
+    --gradient-primary: linear-gradient(135deg, #4CAF50 0%, #0D3B3F 100%);
+    --gradient-accent: linear-gradient(135deg, #5CB85C 0%, #1E4D2B 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(210 40% 98%) 100%);
 
     /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(215 25% 15% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(215 25% 15% / 0.08), 0 2px 4px -2px hsl(215 25% 15% / 0.05);
-    --shadow-lg: 0 10px 15px -3px hsl(215 25% 15% / 0.1), 0 4px 6px -4px hsl(215 25% 15% / 0.05);
-    --shadow-xl: 0 20px 25px -5px hsl(215 25% 15% / 0.1), 0 8px 10px -6px hsl(215 25% 15% / 0.05);
-    --shadow-card: 0 2px 8px -2px hsl(180 60% 25% / 0.08);
-    --shadow-card-hover: 0 8px 20px -4px hsl(180 60% 25% / 0.15);
+    --shadow-sm: 0 1px 2px 0 hsl(222 47% 11% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(222 47% 11% / 0.08), 0 2px 4px -2px hsl(222 47% 11% / 0.05);
+    --shadow-lg: 0 10px 15px -3px hsl(222 47% 11% / 0.1), 0 4px 6px -4px hsl(222 47% 11% / 0.05);
+    --shadow-xl: 0 20px 25px -5px hsl(222 47% 11% / 0.1), 0 8px 10px -6px hsl(222 47% 11% / 0.05);
+    --shadow-card: 0 2px 8px -2px hsl(185 66% 15% / 0.08);
+    --shadow-card-hover: 0 8px 20px -4px hsl(185 66% 15% / 0.15);
 
     /* Chart Colors */
-    --chart-1: 174 72% 40%;
-    --chart-2: 200 75% 50%;
-    --chart-3: 330 80% 55%;
-    --chart-4: 145 65% 42%;
+    --chart-1: 122 39% 49%;
+    --chart-2: 185 66% 25%;
+    --chart-3: 137 44% 30%;
+    --chart-4: 88 50% 53%;
     --chart-5: 38 95% 55%;
   }
 
   .dark {
-    --background: 215 30% 10%;
-    --foreground: 210 20% 95%;
+    /* Slate-900 (#0F172A) & #F8FAFC */
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
 
-    --card: 215 25% 14%;
-    --card-foreground: 210 20% 95%;
+    --card: 217 33% 15%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 215 25% 14%;
-    --popover-foreground: 210 20% 95%;
+    --popover: 217 33% 15%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 174 65% 50%;
-    --primary-foreground: 215 30% 10%;
+    /* Verde vibrante (#5CB85C) */
+    --primary: 120 39% 54%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 180 30% 20%;
-    --secondary-foreground: 174 65% 70%;
+    --secondary: 185 45% 18%;
+    --secondary-foreground: 120 45% 75%;
 
-    --muted: 215 25% 20%;
-    --muted-foreground: 210 15% 60%;
+    --muted: 217 33% 19%;
+    --muted-foreground: 215 20% 68%;
 
-    --accent: 330 75% 60%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 185 66% 15%;
+    --accent-foreground: 210 40% 98%;
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 145 55% 50%;
-    --success-foreground: 215 30% 10%;
+    --success: 122 39% 49%;
+    --success-foreground: 0 0% 100%;
 
     --warning: 38 90% 55%;
     --warning-foreground: 38 90% 10%;
 
-    --info: 200 85% 55%;
-    --info-foreground: 215 30% 10%;
+    --info: 185 55% 42%;
+    --info-foreground: 210 40% 98%;
 
-    --border: 215 25% 22%;
-    --input: 215 25% 22%;
-    --ring: 174 65% 50%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 120 39% 54%;
 
-    --sidebar-background: 215 30% 8%;
-    --sidebar-foreground: 210 20% 90%;
-    --sidebar-primary: 174 65% 50%;
-    --sidebar-primary-foreground: 215 30% 10%;
-    --sidebar-accent: 215 25% 15%;
-    --sidebar-accent-foreground: 210 20% 90%;
-    --sidebar-border: 215 25% 18%;
-    --sidebar-ring: 174 65% 50%;
+    --sidebar-background: 185 66% 15%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 120 39% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 185 55% 20%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 185 45% 22%;
+    --sidebar-ring: 120 39% 54%;
   }
 }
 
@@ -189,38 +191,38 @@
 
   /* Status badges */
   .badge-agendada {
-    @apply bg-blue-100 text-blue-700 border-blue-200;
+    @apply bg-[#0D3B3F]/10 text-[#0D3B3F] border-[#0D3B3F]/25 dark:bg-[#0D3B3F]/50 dark:text-[#7DD3FC] dark:border-[#0D3B3F];
   }
   .badge-confirmada {
-    @apply bg-emerald-100 text-emerald-700 border-emerald-200;
+    @apply bg-[#4CAF50]/15 text-[#1E4D2B] border-[#4CAF50]/30 dark:bg-[#4CAF50]/20 dark:text-[#86EFAC] dark:border-[#4CAF50]/40;
   }
   .badge-concluida {
-    @apply bg-teal-100 text-teal-700 border-teal-200;
+    @apply bg-[#4CAF50]/20 text-[#1E4D2B] border-[#4CAF50]/40 dark:bg-[#4CAF50]/25 dark:text-[#6EE7B7] dark:border-[#4CAF50]/50;
   }
   .badge-cancelada {
-    @apply bg-red-100 text-red-700 border-red-200;
+    @apply bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900/50;
   }
   .badge-falta {
-    @apply bg-orange-100 text-orange-700 border-orange-200;
+    @apply bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-900/50;
   }
   .badge-remarcada {
-    @apply bg-purple-100 text-purple-700 border-purple-200;
+    @apply bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-900/50;
   }
 
   /* Estado badges */
   .badge-ativo {
-    @apply bg-emerald-100 text-emerald-700 border-emerald-200;
+    @apply bg-[#4CAF50]/20 text-[#1E4D2B] border-[#4CAF50]/40 dark:bg-[#4CAF50]/25 dark:text-[#86EFAC] dark:border-[#4CAF50]/50;
   }
   .badge-inativo {
-    @apply bg-gray-100 text-gray-600 border-gray-200;
+    @apply bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700;
   }
 
   /* Origin badges */
   .badge-casa-saude {
-    @apply bg-teal-100 text-teal-700 border-teal-200;
+    @apply bg-[#0D3B3F]/15 text-[#0D3B3F] border-[#0D3B3F]/30 dark:bg-[#0D3B3F]/50 dark:text-[#6EE7B7] dark:border-[#0D3B3F];
   }
   .badge-unidade-movel {
-    @apply bg-sky-100 text-sky-700 border-sky-200;
+    @apply bg-[#1E4D2B]/15 text-[#1E4D2B] border-[#1E4D2B]/30 dark:bg-[#1E4D2B]/50 dark:text-[#86EFAC] dark:border-[#1E4D2B];
   }
 
   /* Smooth page transitions */

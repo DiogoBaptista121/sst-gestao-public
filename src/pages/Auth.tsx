@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { HeartPulse, Loader2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import logoSst from '@/assets/logo-sst.png';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -67,11 +68,13 @@ export default function AuthPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-4 shadow-lg">
-            <HeartPulse className="w-9 h-9 text-primary-foreground" />
-          </div>
-          <h1 className="text-2xl font-display font-bold text-foreground">Casa de Saúde</h1>
-          <p className="text-sm text-muted-foreground">Sistema de Gestão</p>
+          <img
+            src={logoSst}
+            alt="Logotipo SST"
+            className="h-20 w-auto object-contain mb-4 drop-shadow-md"
+          />
+          <h1 className="text-2xl font-display font-bold text-foreground">Segurança e Saúde</h1>
+          <p className="text-sm text-muted-foreground">no Trabalho (SST)</p>
         </div>
 
         <Card className="shadow-xl border-border/50">

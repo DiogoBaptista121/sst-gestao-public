@@ -173,7 +173,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ✅ Roles atualizadas
   const isAdmin = role === 'admin';
   const isGestor = role === 'gestor';
-  const isColaborador = role === 'colaborador';
+  const isColaborador =
+    role === 'colaborador_casa_saude' ||
+    role === 'colaborador_unidade_movel' ||
+    role === 'colaborador_mt' ||
+    role === 'psicologa';
   const canEdit = isAdmin || isGestor || isColaborador;
 
   return (

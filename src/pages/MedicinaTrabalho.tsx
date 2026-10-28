@@ -10,7 +10,7 @@ export default function MedicinaTrabalhoPage() {
   const activeTab = searchParams.get('tab') || 'funcionarios';
 
   const { role } = useAuth();
-  if (role !== 'admin') {
+  if (role !== 'admin' && role !== 'colaborador_mt') {
     return <Navigate to="/" replace />;
   }
 

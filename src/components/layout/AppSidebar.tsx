@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react';
 import {
   Home,
   CreditCard,
-  Calendar,
+  Activity,
   CalendarDays,
   Stethoscope,
+  HardHat,
   BarChart3,
   FileSpreadsheet,
   Settings,
   LogOut,
-  HeartPulse,
+  ShieldCheck,
   MapPin,
   LayoutGrid,
   ChevronDown,
@@ -41,9 +42,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import logoSst from '@/assets/logo-sst.png';
 
 const menuItems = [
-  { title: 'Início', url: '/', icon: Home, roles: ['admin', 'gestor', 'colaborador_casa_saude', 'colaborador_unidade_movel', 'psicologa', 'visualizador'] },
+  { title: 'Início', url: '/', icon: Home, roles: ['admin', 'gestor', 'colaborador_casa_saude', 'colaborador_unidade_movel', 'colaborador_mt', 'psicologa', 'visualizador'] },
   { title: 'Cartão de Saúde', url: '/cartao-saude', icon: CreditCard, roles: ['admin', 'gestor', 'colaborador_casa_saude', 'colaborador_unidade_movel'] },
   { title: 'Dashboard', url: '/dashboard', icon: BarChart3, roles: ['admin', 'gestor'] },
   { title: 'Importar/Exportar', url: '/importar-exportar', icon: FileSpreadsheet, roles: ['admin', 'gestor'] },
@@ -52,8 +54,8 @@ const menuItems = [
 
 const calendarioSubItems = [
   { title: 'Visão Geral', url: '/calendario', icon: LayoutGrid },
-  { title: 'Horários e Locais', url: '/horarios-locais', icon: MapPin },
-  { title: 'Agenda Unidade Móvel', url: '/agenda-unidade-movel', icon: Truck },
+  { title: 'Horários e Locais', url: '/horarios-locais', icon: MapPin, roles: ['admin', 'gestor', 'colaborador_casa_saude', 'colaborador_unidade_movel', 'psicologa', 'visualizador'] },
+  { title: 'Agenda Unidade Móvel', url: '/agenda-unidade-movel', icon: Truck, roles: ['admin', 'gestor', 'colaborador_casa_saude', 'colaborador_unidade_movel', 'psicologa', 'visualizador'] },
 ];
 
 const consultasSubItems = [
@@ -64,8 +66,8 @@ const consultasSubItems = [
 ];
 
 const medicinaSubItems = [
-  { title: 'Funcionários', url: '/medicina-trabalho?tab=funcionarios', icon: Users },
-  { title: 'Consultas MT', url: '/medicina-trabalho?tab=consultas', icon: ClipboardList },
+  { title: 'Funcionários', url: '/medicina-trabalho?tab=funcionarios', icon: HardHat },
+  { title: 'Consultas MT', url: '/medicina-trabalho?tab=consultas', icon: Stethoscope },
 ];
 
 export function AppSidebar() {
@@ -123,6 +125,10 @@ export function AppSidebar() {
     (item) => !item.roles || item.roles.includes(role || 'visualizador')
   );
 
+  const visibleCalendarioSubItems = calendarioSubItems.filter(
+    (item) => !item.roles || item.roles.includes(role || 'visualizador')
+  );
+
   const visibleConsultasSubItems = consultasSubItems.filter(
     (item) => !item.roles || item.roles.includes(role || 'visualizador')
   );
@@ -138,6 +144,7 @@ export function AppSidebar() {
       case 'gestor': return 'Gestor';
       case 'colaborador_casa_saude': return 'Colaborador Casa de Saúde';
       case 'colaborador_unidade_movel': return 'Colaborador Unidade Móvel';
+      case 'colaborador_mt': return 'Colaborador Medicina do Trabalho';
       case 'psicologa': return 'Psicóloga';
       case 'visualizador': return 'Visualizador';
       default: return 'Utilizador';
@@ -148,13 +155,15 @@ export function AppSidebar() {
     <Sidebar className="sidebar-gradient border-r-0">
       <SidebarHeader className="p-4 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm">
-            <HeartPulse className="w-6 h-6 text-white" />
-          </div>
+          <img
+            src={logoSst}
+            alt="Logotipo SST"
+            className="h-12 w-auto object-contain"
+          />
           {!isCollapsed && (
-            <div className="flex flex-col">
-              <span className="text-lg font-display font-semibold text-white">Casa de Saúde</span>
-              <span className="text-xs text-white/70">Sistema de Gestão</span>
+            <div className="flex flex-col justify-center min-w-0">
+              <span className="text-base font-display font-semibold text-[#F8FAFC] leading-tight truncate">Segurança e Saúde</span>
+              <span className="text-xs text-[#8BC34A] font-medium truncate">no Trabalho (SST)</span>
             </div>
           )}
         </div>
@@ -178,7 +187,7 @@ export function AppSidebar() {
                           isActive && 'bg-white/15 text-white font-medium shadow-sm'
                         )}
                       >
-                        <item.icon className={cn('w-5 h-5 flex-shrink-0', isActive ? 'text-white' : 'text-white/70')} />
+                        <item.icon className={cn('w-5 h-5 flex-shrink-0', isActive ? 'text-[#8BC34A]' : 'text-white/70')} />
                         {!isCollapsed && <span className="truncate flex-1">{item.title}</span>}
                       </RouterNavLink>
                     </SidebarMenuButton>
@@ -196,7 +205,7 @@ export function AppSidebar() {
                     isCalendarioActive && 'text-white font-medium'
                   )}
                 >
-                  <CalendarDays className={cn('w-5 h-5 flex-shrink-0', isCalendarioActive ? 'text-white' : 'text-white/70')} />
+                  <CalendarDays className={cn('w-5 h-5 flex-shrink-0', isCalendarioActive ? 'text-[#8BC34A]' : 'text-white/70')} />
                   {!isCollapsed && (
                     <>
                       <span className="truncate flex-1">Calendário</span>
@@ -207,7 +216,7 @@ export function AppSidebar() {
 
                 {!isCollapsed && calendarioOpen && (
                   <SidebarMenuSub className="ml-2 mt-1 space-y-0.5">
-                    {calendarioSubItems.map((sub) => {
+                    {visibleCalendarioSubItems.map((sub) => {
                       const isSubActive = location.pathname === sub.url;
                       return (
                         <SidebarMenuSubItem key={sub.url}>
@@ -220,7 +229,7 @@ export function AppSidebar() {
                                 isSubActive && 'bg-white/15 text-white font-medium'
                               )}
                             >
-                              <sub.icon className={cn('w-4 h-4 flex-shrink-0', isSubActive ? 'text-white' : 'text-white/60')} />
+                              <sub.icon className={cn('w-4 h-4 flex-shrink-0', isSubActive ? 'text-[#8BC34A]' : 'text-white/60')} />
                               <span className="truncate">{sub.title}</span>
                             </RouterNavLink>
                           </SidebarMenuSubButton>
@@ -232,7 +241,7 @@ export function AppSidebar() {
 
                 {isCollapsed && (
                   <SidebarMenuSub className="mt-1 space-y-0.5">
-                    {calendarioSubItems.map((sub) => {
+                    {visibleCalendarioSubItems.map((sub) => {
                       const isSubActive = location.pathname === sub.url;
                       return (
                         <SidebarMenuSubItem key={sub.url}>
@@ -267,7 +276,7 @@ export function AppSidebar() {
                     isConsultasActive && 'text-white font-medium'
                   )}
                 >
-                  <Calendar className={cn('w-5 h-5 flex-shrink-0', isConsultasActive ? 'text-white' : 'text-white/70')} />
+                  <Activity className={cn('w-5 h-5 flex-shrink-0', isConsultasActive ? 'text-[#8BC34A]' : 'text-white/70')} />
                   {!isCollapsed && (
                     <>
                       <span className="truncate flex-1">Consultas</span>
@@ -291,7 +300,7 @@ export function AppSidebar() {
                                 isSubActive && 'bg-white/15 text-white font-medium'
                               )}
                             >
-                              <sub.icon className={cn('w-4 h-4 flex-shrink-0', isSubActive ? 'text-white' : 'text-white/60')} />
+                              <sub.icon className={cn('w-4 h-4 flex-shrink-0', isSubActive ? 'text-[#8BC34A]' : 'text-white/60')} />
                               <span className="truncate">{sub.title}</span>
                             </RouterNavLink>
                           </SidebarMenuSubButton>
@@ -328,8 +337,8 @@ export function AppSidebar() {
               </SidebarMenuItem>
               )}
 
-              {/* 4. Medicina do Trabalho — só admin */}
-              {role === 'admin' && (
+              {/* 4. Medicina do Trabalho — admin e colaborador_mt */}
+              {(role === 'admin' || role === 'colaborador_mt') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     onClick={() => !isCollapsed && setMedicinaOpen((o) => !o)}
@@ -339,7 +348,7 @@ export function AppSidebar() {
                       isMedicinaActive && 'text-white font-medium'
                     )}
                   >
-                    <Stethoscope className={cn('w-5 h-5 flex-shrink-0', isMedicinaActive ? 'text-white' : 'text-white/70')} />
+                    <Stethoscope className={cn('w-5 h-5 flex-shrink-0', isMedicinaActive ? 'text-[#8BC34A]' : 'text-white/70')} />
                     {!isCollapsed && (
                       <>
                         <span className="truncate flex-1">Medicina do Trabalho</span>
@@ -368,7 +377,7 @@ export function AppSidebar() {
                                   isSubActive && 'bg-white/15 text-white font-medium'
                                 )}
                               >
-                                <sub.icon className={cn('w-4 h-4 flex-shrink-0', isSubActive ? 'text-white' : 'text-white/60')} />
+                                <sub.icon className={cn('w-4 h-4 flex-shrink-0', isSubActive ? 'text-[#8BC34A]' : 'text-white/60')} />
                                 <span className="truncate">{sub.title}</span>
                               </RouterNavLink>
                             </SidebarMenuSubButton>
@@ -424,7 +433,7 @@ export function AppSidebar() {
                           isActive && 'bg-white/15 text-white font-medium shadow-sm'
                         )}
                       >
-                        <item.icon className={cn('w-5 h-5 flex-shrink-0', isActive ? 'text-white' : 'text-white/70')} />
+                        <item.icon className={cn('w-5 h-5 flex-shrink-0', isActive ? 'text-[#8BC34A]' : 'text-white/70')} />
                         {!isCollapsed && <span className="truncate flex-1">{item.title}</span>}
                         {!isCollapsed && item.title === 'Cartão de Saúde' && pendingCartoes > 0 && (
                           <span className="flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-blue-500 rounded-full">
@@ -455,7 +464,7 @@ export function AppSidebar() {
                           isActive && 'bg-white/15 text-white font-medium shadow-sm'
                         )}
                       >
-                        <item.icon className={cn('w-5 h-5 flex-shrink-0', isActive ? 'text-white' : 'text-white/70')} />
+                        <item.icon className={cn('w-5 h-5 flex-shrink-0', isActive ? 'text-[#8BC34A]' : 'text-white/70')} />
                         {!isCollapsed && <span className="truncate flex-1">{item.title}</span>}
                       </RouterNavLink>
                     </SidebarMenuButton>

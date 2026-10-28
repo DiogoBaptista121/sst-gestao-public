@@ -100,9 +100,9 @@ function AppRoutes() {
       <Route path="/cartao-saude" element={<RoleProtectedRoute allowedRoles={['admin', 'gestor', 'colaborador_casa_saude', 'colaborador_unidade_movel']}><CartaoSaudePage /></RoleProtectedRoute>} />
       <Route path="/consultas" element={<RoleProtectedRoute allowedRoles={['admin', 'gestor']}><ConsultasPage /></RoleProtectedRoute>} />
       <Route path="/calendario" element={<ProtectedRoute><CalendarioPage /></ProtectedRoute>} />
-      <Route path="/horarios-locais" element={<ProtectedRoute><HorariosLocaisPage /></ProtectedRoute>} />
-      <Route path="/agenda-unidade-movel" element={<ProtectedRoute><AgendaUnidadeMovelPage /></ProtectedRoute>} />
-      <Route path="/medicina-trabalho" element={<RoleProtectedRoute allowedRoles={['admin']}><MedicinaTrabalhoPage /></RoleProtectedRoute>} />
+      <Route path="/horarios-locais" element={<RoleProtectedRoute allowedRoles={['admin', 'gestor', 'colaborador_casa_saude', 'colaborador_unidade_movel', 'psicologa', 'visualizador']}><HorariosLocaisPage /></RoleProtectedRoute>} />
+      <Route path="/agenda-unidade-movel" element={<RoleProtectedRoute allowedRoles={['admin', 'gestor', 'colaborador_casa_saude', 'colaborador_unidade_movel', 'psicologa', 'visualizador']}><AgendaUnidadeMovelPage /></RoleProtectedRoute>} />
+      <Route path="/medicina-trabalho" element={<RoleProtectedRoute allowedRoles={['admin', 'colaborador_mt']}><MedicinaTrabalhoPage /></RoleProtectedRoute>} />
       <Route path="/dashboard" element={<RoleProtectedRoute allowedRoles={['admin', 'gestor']}><DashboardPage /></RoleProtectedRoute>} />
       <Route path="/importar-exportar" element={<RoleProtectedRoute allowedRoles={['admin', 'gestor']}><ImportarExportarPage /></RoleProtectedRoute>} />
       <Route path="/definicoes" element={<ProtectedRoute><DefinicoesPage /></ProtectedRoute>} />

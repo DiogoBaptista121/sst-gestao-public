@@ -28,6 +28,7 @@ const roleLabels: Record<AppRole, string> = {
   gestor: 'Gestor',
   colaborador_casa_saude: 'Colaborador Casa de Saúde',
   colaborador_unidade_movel: 'Colaborador Unidade Móvel',
+  colaborador_mt: 'Colaborador Medicina do Trabalho',
   psicologa: 'Psicóloga',
   visualizador: 'Visualizador',
 };
@@ -37,6 +38,7 @@ const roleBadgeColors: Record<AppRole, string> = {
   gestor: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   colaborador_casa_saude: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
   colaborador_unidade_movel: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
+  colaborador_mt: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   psicologa: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
   visualizador: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
 };

@@ -1,6 +1,6 @@
 // Casa de Saúde - Database Types
 
-export type AppRole = 'admin' | 'gestor' | 'colaborador_casa_saude' | 'colaborador_unidade_movel' | 'psicologa' | 'visualizador';
+export type AppRole = 'admin' | 'gestor' | 'colaborador_casa_saude' | 'colaborador_unidade_movel' | 'colaborador_mt' | 'psicologa' | 'visualizador';
 export type ConsultaStatus = 'agendada' | 'confirmada' | 'concluida' | 'cancelada' | 'falta' | 'remarcada';
 // Mantido por compatibilidade — usar ConsultaTipo para nova lógica
 export type ConsultaOrigem = 'casa_saude' | 'unidade_movel';
